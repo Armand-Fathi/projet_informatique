@@ -1,43 +1,53 @@
 #include "smoke.h"
-#include <algorithm>
 #include <cmath>
+using namespace std;
 
-void Smoke::initialize(int nx, int ny, double L, double H)
+void Smoke::initialize( int nx1, int ny1, double l1,double h1)
 {
-    nx_ = nx; ny_ = ny;
-    L_ = L;  H_ = H;
+    nx_=nx1;
+    ny_=ny1;
+    l_=l1;
+    h_=h1;
 
-    dx_ = L_ / (nx_ - 1);
-    dy_ = H_ / (ny_ - 1);
+    dx_=l_/(nx_-1);
+    dy_=h_/(ny_-1);
 
-    q_.assign(nx_ * ny_, 0.0);
+    q_.assign(nx_*ny_, 0);
 }
 
 void Smoke::reset()
 {
-    std::fill(q_.begin(), q_.end(), 0.0);
+    fill(q_.begin(), q_.end(), 0.0);
 }
 
-void Smoke::addGaussian(const Chimney& c)
+void Smoke::addGaussian(const Chimney & c)
 {
-    // q += A * exp(-(x-x0)^2/(2*sx^2)) * exp(-(y-y0)^2/(2*sy^2))
-    for (int i = 0; i < nx_; ++i) {
-        const double x = i * dx_;
-        const double ex = std::exp(- (x - c.x0) * (x - c.x0) / (2.0 * c.sigmaX * c.sigmaX));
-        for (int j = 0; j < ny_; ++j) {
-            const double y = j * dy_;
-            const double ey = std::exp(- (y - c.y0) * (y - c.y0) / (2.0 * c.sigmaY * c.sigmaY));
-            q_[idx(i,j)] += c.amplitude * ex * ey;
+    static constexpr double pi=3.14;
+
+    for(int i=0; i < nx_; i++)
+    {
+        double x=i*dx_;
+        for( int j=0; j <ny_; j++)
+        {
+            double y=j*dy_;
+
+            q_[idx(i,j)] += c.amplitude *(1/ (c.sigmaX * sqrt(2* pi)))  *
+                            (1/ (c.sigmaY * sqrt(2* pi))) *
+                            exp(-((x-c.x0)*(x-c.x0) / (2*c.sigmaX * c.sigmaX )))*
+                            exp(-((y-c.y0)*(y-c.y0) / (2*c.sigmaY * c.sigmaY )));
         }
     }
+
+
 }
 
 void Smoke::emitContinuous(double dt)
 {
     for (const auto& c : chimneys_) {
         if (!c.continuous || c.rate <= 0.0) continue;
+
         Chimney injected = c;
-        injected.amplitude = c.rate * dt; // 每秒 rate，乘dt得到本帧叠加量
+        injected.amplitude = c.rate * dt;
         addGaussian(injected);
     }
 }
