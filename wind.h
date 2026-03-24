@@ -1,17 +1,35 @@
-#pragma once
+#ifndef WIND_H
+#define WIND_H
+
 #include <cmath>
 
 class Wind {
-public:
-    void set(double speed, double angleDeg);
-    double u() const { return u_; }
-    double w() const { return w_; }
-    double speed() const { return speed_; }
-    double angleDeg() const { return angleDeg_; }
 
-private:
-    double speed_ = 0.35;
-    double angleDeg_ = 180.0;
-    double u_ = 0.0;
-    double w_ = 0.0;
+
+    private:
+
+
+        double speed_ = 0;
+        double angleDeg_ = 0;
+        double horizontal = 0;
+        double vertical = 0;
+
+
+    public:
+
+        void set(double speed, double angleDeg);
+
+
+
+        //accesseurs
+
+        double u() const { return horizontal; }
+        double w() const { return vertical; }
+        double speed() const { return speed_; }
+        double angleDeg() const { return angleDeg_; }
+
+
 };
+
+
+#endif

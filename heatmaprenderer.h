@@ -1,20 +1,33 @@
-#pragma once
+
 #include <QImage>
 #include <vector>
 
 class HeatMapRenderer {
-public:
-    // 渲染函数
-    QImage render(const std::vector<double>& q, int nx, int ny, bool autoScale = true);
 
-    // [新增] 获取上一次渲染时使用的数值范围（用于给 UI 画刻度）
-    double lastMin() const { return lastMin_; }
-    double lastMax() const { return lastMax_; }
 
-private:
-    QRgb mapToColor(double v01) const;
+    private:
+    //transforme une valeur normalisée entre 0 et 1 en couleur
+        QRgb mapToColor(double v01) const;
 
-    // [新增] 记录范围
-    double lastMin_ = 0.0;
-    double lastMax_ = 1.0;
+        double lastMin_ = 0.0;
+        double lastMax_ = 1.0;
+
+
+    public:
+        //fabriquer une image heatmap à partir de q.
+                //q :tableau 1D qui contient les valeurs (taille attendue : nx * ny)
+
+        QImage render(const std::vector<double>& q, int nx, int ny, bool autoScale = true);
+
+
+
+
+
+        double lastMin() const { return lastMin_; }
+        double lastMax() const { return lastMax_; }
+
+
+
+
+
 };

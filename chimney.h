@@ -1,13 +1,17 @@
-#pragma once
+#ifndef CHIMNEY_H
+#define CHIMNEY_H
 
 typedef struct
 {
-    double x0=0.5; double y0=0.5;
+    double x0=0; double y0=0;
 
-    double sigmaX= 0.04; double sigmaY= 0.04;
+    double sigmaX= 0; double sigmaY= 0; //étalement
 
-    double amplitude= 1; //??
+    double amplitude= 0; //quantité de fumée injectée
 
     bool continuous =true;
-    double rate=2; //??
+    double rate=0.2; //débit d’émission
 }Chimney;
+
+
+#endif
