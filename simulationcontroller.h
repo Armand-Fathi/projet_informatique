@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QTimer>
+#include <vector>
 #include "wind.h"
 #include "smoke.h"
 #include "advectionsolver.h"
@@ -11,8 +12,6 @@ class SimulationController : public QObject {
     Q_OBJECT
 
 public:
-    void setWaves(double amp, double freq) { wAmp_ = amp; wFreq_ = freq; }
-    void setDiffusion(double kappa) { kappa_ = kappa; }
     explicit SimulationController(QObject* parent=nullptr);
 
     void setup(HeatMapWidget* view);
@@ -21,18 +20,28 @@ public:
     void pause();
     void reset();
 
-    void setWind(double speed, double angleDeg);
+    void setWaves(double amp, double freq) { wAmp_ = amp; wFreq_ = freq; }
+    void setDiffusion(double kappa) { kappa_ = kappa; }
     void setStepsPerTick(int s) { stepsPerTick_ = s; }
 
-private:
-    double tSim_ = 0.0;     // temps simulation (s)
-    double wAmp_ = 0.08;    // amplitude
-    double wFreq_ = 0.2;    // fréquence (Hz)
+    void clearWinds();
+    void setWindCount(int count);
+    void setWindAt(int index, double speed, double angleDeg);
 
-    double kappa_ = 0.0005; // >>> AJOUT : diffusion (à régler)
+    double resultantU() const;
+    double resultantW() const;
+    double resultantSpeed() const;
+    double resultantAngleDeg() const;
+
+private:
+    double tSim_ = 0.0;
+    double wAmp_ = 0.0;
+    double wFreq_ = 0.0;
+    double kappa_ = 0.0005;
+
     HeatMapWidget* view_ = nullptr;
 
-    Wind wind_;
+    std::vector<Wind> winds_;
     Smoke smoke_;
     AdvectionSolver solver_;
     HeatMapRenderer renderer_;

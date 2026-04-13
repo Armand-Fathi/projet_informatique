@@ -7,6 +7,9 @@
 #include <QSlider>
 #include <QPushButton>
 #include <QLabel>
+#include <QScrollArea>
+#include <QFrame>
+#include <QSizePolicy>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 {
@@ -14,63 +17,188 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     setCentralWidget(central);
 
     auto* root = new QHBoxLayout(central);
+    root->setContentsMargins(8, 8, 8, 8);
+    root->setSpacing(8);
 
-    // 左侧：控制面板
-    auto* panel = new QVBoxLayout();
-    root->addLayout(panel, 0);
+    // =========================
+    // Colonne gauche fixe
+    // =========================
+    leftPanelWidget_ = new QWidget(this);
+    leftPanelWidget_->setMinimumWidth(280);
+    leftPanelWidget_->setMaximumWidth(320);
+    leftPanelWidget_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
 
-    speedLabel_ = new QLabel("Speed: 0.35", this);
-    angleLabel_ = new QLabel("Angle: 180", this);
+    auto* panel = new QVBoxLayout(leftPanelWidget_);
+    panel->setContentsMargins(4, 4, 4, 4);
+    panel->setSpacing(8);
 
-    speedSlider_ = new QSlider(Qt::Horizontal, this);
-    speedSlider_->setRange(0, 100);
-    speedSlider_->setValue(35);
+    addWindBtn_ = new QPushButton("Ajouter un vent", leftPanelWidget_);
+    resultantLabel_ = new QLabel("Vent resultant : speed=0.00 angle=0.0", leftPanelWidget_);
+    resultantLabel_->setWordWrap(true);
 
-    angleSlider_ = new QSlider(Qt::Horizontal, this);
-    angleSlider_->setRange(0, 360);
-    angleSlider_->setValue(180);
+    startBtn_ = new QPushButton("Start", leftPanelWidget_);
+    pauseBtn_ = new QPushButton("Pause", leftPanelWidget_);
+    resetBtn_ = new QPushButton("Reset", leftPanelWidget_);
 
-    startBtn_ = new QPushButton("Start", this);
-    pauseBtn_ = new QPushButton("Pause", this);
-    resetBtn_ = new QPushButton("Reset", this);
+    // =========================
+    // Scroll area pour les vents
+    // =========================
+    windsContainer_ = new QWidget(leftPanelWidget_);
+    windsLayout_ = new QVBoxLayout(windsContainer_);
+    windsLayout_->setContentsMargins(0, 0, 0, 0);
+    windsLayout_->setSpacing(10);
+    windsLayout_->addStretch();
 
-    panel->addWidget(speedLabel_);
-    panel->addWidget(speedSlider_);
-    panel->addSpacing(10);
-    panel->addWidget(angleLabel_);
-    panel->addWidget(angleSlider_);
-    panel->addSpacing(20);
+    windsScrollArea_ = new QScrollArea(leftPanelWidget_);
+    windsScrollArea_->setWidgetResizable(true);
+    windsScrollArea_->setFrameShape(QFrame::NoFrame);
+    windsScrollArea_->setWidget(windsContainer_);
+    windsScrollArea_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+    panel->addWidget(addWindBtn_);
+    panel->addWidget(windsScrollArea_, 1);
+    panel->addWidget(resultantLabel_);
     panel->addWidget(startBtn_);
     panel->addWidget(pauseBtn_);
     panel->addWidget(resetBtn_);
-    panel->addStretch(1);
 
-    // 右侧：热力图
+    root->addWidget(leftPanelWidget_, 0);
+
+    // =========================
+    // Vue principale à droite
+    // =========================
     view_ = new HeatMapWidget(this);
+    view_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     root->addWidget(view_, 1);
 
     controller_.setup(view_);
-    wireUi();
 
-    setWindowTitle("Plume Simulation (Advection + Upwind)");
-    resize(900, 650);
+    addWindRow(0.35, 180.0);
+
+    wireUi();
+    syncControllerFromUi();
+    updateResultantLabel();
+
+    setWindowTitle("prototype-v-1");
+    resize(1400, 800);
 }
 
 MainWindow::~MainWindow() = default;
 
-void MainWindow::wireUi()
+void MainWindow::addWindRow(double speed, double angle)
 {
-    connect(speedSlider_, &QSlider::valueChanged, this, [this](int v){
-        double speed = v / 100.0; // 0..1
-        speedLabel_->setText(QString("Speed: %1").arg(speed, 0, 'f', 2));
-        double angle = angleSlider_->value();
-        controller_.setWind(speed, angle);
+    WindRow row;
+
+    row.container = new QWidget(windsContainer_);
+    auto* layout = new QVBoxLayout(row.container);
+    layout->setContentsMargins(6, 6, 6, 6);
+    layout->setSpacing(4);
+
+    row.title = new QLabel(row.container);
+
+    row.speedLabel = new QLabel(QString("Speed: %1").arg(speed, 0, 'f', 2), row.container);
+    row.speedSlider = new QSlider(Qt::Horizontal, row.container);
+    row.speedSlider->setRange(0, 200);
+    row.speedSlider->setValue((int)(speed * 100.0));
+
+    row.angleLabel = new QLabel(QString("Angle: %1").arg(angle, 0, 'f', 1), row.container);
+    row.angleSlider = new QSlider(Qt::Horizontal, row.container);
+    row.angleSlider->setRange(0, 360);
+    row.angleSlider->setValue((int)angle);
+
+    row.removeBtn = new QPushButton("Supprimer", row.container);
+
+    layout->addWidget(row.title);
+    layout->addWidget(row.speedLabel);
+    layout->addWidget(row.speedSlider);
+    layout->addWidget(row.angleLabel);
+    layout->addWidget(row.angleSlider);
+    layout->addWidget(row.removeBtn);
+
+    // Toujours insérer avant le stretch final
+    windsLayout_->insertWidget(windsLayout_->count() - 1, row.container);
+    windRows_.push_back(row);
+
+    rebuildWindTitles();
+
+    connect(row.speedSlider, &QSlider::valueChanged, this, [this, rowWidget = row.container](int v){
+        for (auto& r : windRows_) {
+            if (r.container == rowWidget) {
+                double speed = v / 100.0;
+                r.speedLabel->setText(QString("Speed: %1").arg(speed, 0, 'f', 2));
+                syncControllerFromUi();
+                updateResultantLabel();
+                return;
+            }
+        }
     });
 
-    connect(angleSlider_, &QSlider::valueChanged, this, [this](int a){
-        angleLabel_->setText(QString("Angle: %1").arg(a));
-        double speed = speedSlider_->value() / 100.0;
-        controller_.setWind(speed, (double)a);
+    connect(row.angleSlider, &QSlider::valueChanged, this, [this, rowWidget = row.container](int a){
+        for (auto& r : windRows_) {
+            if (r.container == rowWidget) {
+                r.angleLabel->setText(QString("Angle: %1").arg(a));
+                syncControllerFromUi();
+                updateResultantLabel();
+                return;
+            }
+        }
+    });
+
+    connect(row.removeBtn, &QPushButton::clicked, this, [this, rowWidget = row.container](){
+        removeWindRow(rowWidget);
+    });
+}
+
+void MainWindow::removeWindRow(QWidget* rowWidget)
+{
+    for (auto it = windRows_.begin(); it != windRows_.end(); ++it) {
+        if (it->container == rowWidget) {
+            windsLayout_->removeWidget(it->container);
+            delete it->container;
+            windRows_.erase(it);
+            break;
+        }
+    }
+
+    rebuildWindTitles();
+    syncControllerFromUi();
+    updateResultantLabel();
+}
+
+void MainWindow::rebuildWindTitles()
+{
+    for (int i = 0; i < (int)windRows_.size(); ++i) {
+        windRows_[i].title->setText(QString("Vent %1").arg(i + 1));
+    }
+}
+
+void MainWindow::syncControllerFromUi()
+{
+    controller_.clearWinds();
+    controller_.setWindCount((int)windRows_.size());
+
+    for (int i = 0; i < (int)windRows_.size(); ++i) {
+        double speed = windRows_[i].speedSlider->value() / 100.0;
+        double angle = windRows_[i].angleSlider->value();
+        controller_.setWindAt(i, speed, angle);
+    }
+}
+
+void MainWindow::updateResultantLabel()
+{
+    resultantLabel_->setText(
+        QString("Vent resultant : speed=%1 angle=%2")
+            .arg(controller_.resultantSpeed(), 0, 'f', 2)
+            .arg(controller_.resultantAngleDeg(), 0, 'f', 1)
+        );
+}
+
+void MainWindow::wireUi()
+{
+    connect(addWindBtn_, &QPushButton::clicked, this, [this](){
+        addWindRow(0.35, 180.0);
+        syncControllerFromUi();
+        updateResultantLabel();
     });
 
     connect(startBtn_, &QPushButton::clicked, this, [this](){

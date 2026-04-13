@@ -3,8 +3,9 @@
 #include <cmath>
 #include <algorithm>
 
-// 静态辅助函数：用于在 Widget 里绘制颜色条时生成同样的颜色
-// 保持与 Renderer 一致的配色逻辑
+/*Dans le widget, ils doivent dessiner la barre de couleur (dégradé vertical).
+
+Ils veulent la même palette que l’image heatmap, sinon la légende serait fausse*/
 static QRgb plasmaColor(double v01)
 {
     if (v01 < 0.0) v01 = 0.0;
@@ -33,68 +34,83 @@ static QRgb plasmaColor(double v01)
     return qRgb(to255(r), to255(g), to255(bb));
 }
 
+
+
+//Constructeur
 HeatMapWidget::HeatMapWidget(QWidget* parent) : QWidget(parent)
 {
-    setMinimumSize(600, 550); //稍微加宽一点给ColorBar
+    setMinimumSize(600, 550);
+
 }
 
 void HeatMapWidget::setImage(const QImage& img)
 {
     image_ = img;
-    update();
+    update(); //“redessine le widget” → ça déclenche paintEvent().
 }
 
 void HeatMapWidget::paintEvent(QPaintEvent*)
 {
-    QPainter p(this);
-    p.fillRect(rect(), Qt::white); // 白色背景
+    //Créer le painter + fond blanc
 
-    // --- 1. 布局定义 ---
-    int leftMargin = 60;   // 左侧：物理X轴刻度
-    int bottomMargin = 40; // 底部：物理Y轴刻度
-    int topMargin = 20;    // 顶部：防止文字切断
-    int rightMargin = 80;  // 右侧：留给颜色条 (Color Bar)
 
-    // 热力图绘图区域
+    QPainter p(this); //QPainter contient toutes les fonctions de dessin
+
+
+
+    p.fillRect(rect(), Qt::green);
+
+
+    int leftMargin = 60;
+    int bottomMargin = 40;
+    int topMargin = 20;
+    int rightMargin = 70;
+
+    // Définir la mise en page (les rectangles)
     QRect plotRect(leftMargin, topMargin,
                    width() - leftMargin - rightMargin,
                    height() - topMargin - bottomMargin);
 
-    // 颜色条区域 (位于热力图右侧 15px 处，宽 20px)
-    QRect barRect(plotRect.right() + 15, plotRect.top(), 20, plotRect.height());
+    QRect barRect(plotRect.right() + 15, plotRect.top(), 30, plotRect.height());
 
-    // --- 2. 绘制热力图 ---
+    //Dessiner la heatmap (l’image)
     if (!image_.isNull()) {
         p.drawImage(plotRect, image_);
     } else {
         p.fillRect(plotRect, Qt::black);
     }
-    p.setPen(Qt::black);
-    p.drawRect(plotRect); // 热力图边框
+    p.setPen(Qt::red);
+    p.drawRect(plotRect);
 
-    // --- 3. 绘制坐标轴 (物理坐标) ---
     p.setFont(QFont("Arial", 8));
+
+
     int numTicks = 10;
 
-    // 垂直轴 (Screen Y = Physics X)
+    // Axe vertical (à gauche)
     for (int i = 0; i <= numTicks; ++i) {
         double val = (double)i / numTicks;
-        int sy = plotRect.top() + (int)(val * plotRect.height());
+        int sy = plotRect.bottom() - (int)(val * plotRect.height());
 
         p.drawLine(plotRect.left() - 5, sy, plotRect.left(), sy);
 
-        // 文字
+
         QString text = QString::number(val, 'f', 1);
         p.drawText(QRect(0, sy - 10, leftMargin - 7, 20), Qt::AlignRight | Qt::AlignVCenter, text);
     }
-    // 轴标题
+
     p.save();
     p.translate(15, plotRect.center().y());
     p.rotate(-90);
-    p.drawText(QRect(-100, -10, 200, 20), Qt::AlignCenter, "Physics X (u)");
+    p.drawText(QRect(-100, -10, 200, 20), Qt::AlignCenter, "Y");
     p.restore();
 
-    // 水平轴 (Screen X = Physics Y)
+
+
+
+
+
+    //Axe horizontal (en bas)
     for (int i = 0; i <= numTicks; ++i) {
         double val = (double)i / numTicks;
         int sx = plotRect.left() + (int)(val * plotRect.width());
@@ -104,62 +120,89 @@ void HeatMapWidget::paintEvent(QPaintEvent*)
         QString text = QString::number(val, 'f', 1);
         p.drawText(QRect(sx - 15, plotRect.bottom() + 5, 30, 20), Qt::AlignHCenter | Qt::AlignTop, text);
     }
-    p.drawText(QRect(plotRect.left(), height() - 20, plotRect.width(), 20), Qt::AlignCenter, "Physics Y (w)");
+    p.drawText(QRect(plotRect.left(), height() - 20, plotRect.width(), 20), Qt::AlignCenter, "X");
 
-    // --- 4. 绘制右侧颜色条 (Legend) ---
-    // 生成渐变条图像
-    QImage barImg(1, 256, QImage::Format_RGB32);
+
+
+
+    //Dessiner la barre de couleur (legend)
+    QImage barImg(1, 256, QImage::Format_RGBX64);
     for (int y = 0; y < 256; ++y) {
-        // 顶部是最大值(1.0)，底部是最小值(0.0) -> y=0对应1.0
+
         double v01 = 1.0 - (double)y / 255.0;
         QRgb c = plasmaColor(v01);
         barImg.setPixel(0, y, c);
     }
-    p.drawImage(barRect, barImg); // 自动拉伸到 barRect 大小
+    p.drawImage(barRect, barImg);
     p.setPen(Qt::black);
     p.drawRect(barRect);
 
-    // 颜色条刻度
     int barTicks = 5;
     for (int i = 0; i <= barTicks; ++i) {
         double ratio = (double)i / barTicks; // 0.0 ~ 1.0
-        // 数值：底部是 vmin, 顶部是 vmax
         double val = vmin_ + ratio * (vmax_ - vmin_);
 
-        // 屏幕Y坐标：ratio=0(底部) -> rect.bottom()
         int y = barRect.bottom() - (int)(ratio * barRect.height());
 
         p.drawLine(barRect.right(), y, barRect.right() + 5, y);
 
         QString text = QString::number(val, 'f', 1);
-        p.drawText(barRect.right() + 8, y + 5, text); // 稍微向下偏移一点以便垂直居中
+        p.drawText(barRect.right() + 8, y + 5, text);
     }
-    // 颜色条标题
-    p.drawText(QRect(barRect.right() - 10, barRect.top() - 20, 60, 20), Qt::AlignLeft, "Density");
+
+    p.drawText(QRect(barRect.right() - 30, barRect.top() - 20, 60, 20), Qt::AlignLeft, "Density");
 
 
-    // --- 5. 叠加层 (烟囱与风向) ---
-    // 烟囱 (注意坐标映射)
-    p.setPen(Qt::white);
-    p.setBrush(Qt::white);
+
+    //Superposer les “chimneys” (points)
+    p.setPen(Qt::red);
+    p.setBrush(Qt::green);
     for (const auto& c : chimneys_) {
+
         // Physical Y -> Screen X
         int screenX = plotRect.left() + (int)(c.y0 * plotRect.width());
         // Physical X -> Screen Y
         int screenY = plotRect.top() + (int)(c.x0 * plotRect.height());
-        p.drawEllipse(QPoint(screenX, screenY), 5, 5);
+
+        p.drawEllipse(QPoint(screenX, screenY), 30, 5);
     }
 
-    // 风向箭头 (相对于 plotRect 左上角)
     {
-        QPoint origin(plotRect.left() + 30, plotRect.top() + 30);
+        QPoint origin(plotRect.left() + 70, plotRect.top() + 70);
+
+        const double scale = 120.0; // longueur visuelle de la flèche
+
         QPoint tip(
-            origin.x() + (int)(50 * w_),
-            origin.y() + (int)(50 * u_)
+            origin.x() + (int)(scale * w_),   // u = horizontal
+            origin.y() - (int)(scale * (-u_))    // w = vertical, signe inversé écran
             );
-        p.setPen(QPen(Qt::white, 2));
+
+        p.setPen(QPen(Qt::red, 4));
         p.drawLine(origin, tip);
-        p.setBrush(Qt::white);
-        p.drawEllipse(origin, 2, 2);
+
+        // petite pointe de flèche
+        const double dx = tip.x() - origin.x();
+        const double dy = tip.y() - origin.y();
+        const double len = std::sqrt(dx*dx + dy*dy);
+
+        if (len > 1e-6) {
+            const double ux = dx / len;
+            const double uy = dy / len;
+
+            QPoint left(
+                tip.x() - (int)(12 * ux - 6 * uy),
+                tip.y() - (int)(12 * uy + 6 * ux)
+                );
+            QPoint right(
+                tip.x() - (int)(12 * ux + 6 * uy),
+                tip.y() - (int)(12 * uy - 6 * ux)
+                );
+
+            p.drawLine(tip, left);
+            p.drawLine(tip, right);
+        }
+
+        p.setBrush(Qt::black);
+        p.drawEllipse(origin, 4, 4);
     }
 }
